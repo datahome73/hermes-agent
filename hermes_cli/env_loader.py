@@ -16,6 +16,8 @@ from utils import atomic_replace
 # pure ASCII (they become HTTP header values).
 _CREDENTIAL_SUFFIXES = ("_API_KEY", "_TOKEN", "_SECRET", "_KEY")
 
+_DEPLOY_ENV_TRUE_VALUES = {"1", "true", "yes", "on"}
+
 # Names we've already warned about during this process, so repeated
 # load_hermes_dotenv() calls (user env + project env, gateway hot-reload,
 # tests) don't spam the same warning multiple times.
@@ -223,6 +225,17 @@ def load_hermes_dotenv(
     - if no user env exists, the project `.env` also overrides stale shell vars.
     """
     loaded: list[Path] = []
+    preserve_deploy_env = (
+        os.getenv("HERMES_PRESERVE_DEPLOY_ENV", "").strip().lower()
+        in _DEPLOY_ENV_TRUE_VALUES
+    )
+    preserved_values: dict[str, str] = {}
+    if preserve_deploy_env:
+        preserved_values = {
+            key: value
+            for key, value in os.environ.items()
+            if value and any(key.endswith(suffix) for suffix in _CREDENTIAL_SUFFIXES)
+        }
 
     home_path = Path(hermes_home or os.getenv("HERMES_HOME", Path.home() / ".hermes"))
     user_env = home_path / ".env"
@@ -241,6 +254,9 @@ def load_hermes_dotenv(
     if project_env_path and project_env_path.exists():
         _load_dotenv_with_fallback(project_env_path, override=not loaded)
         loaded.append(project_env_path)
+
+    if preserved_values:
+        os.environ.update(preserved_values)
 
     _apply_external_secret_sources(home_path)
 

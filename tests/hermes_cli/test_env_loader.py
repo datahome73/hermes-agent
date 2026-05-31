@@ -20,6 +20,21 @@ def test_user_env_overrides_stale_shell_values(tmp_path, monkeypatch):
     assert os.getenv("OPENAI_BASE_URL") == "https://new.example/v1"
 
 
+def test_preserve_deploy_env_keeps_existing_credentials(tmp_path, monkeypatch):
+    home = tmp_path / "hermes"
+    home.mkdir()
+    env_file = home / ".env"
+    env_file.write_text("DEEPSEEK_API_KEY=stale-key\n", encoding="utf-8")
+
+    monkeypatch.setenv("HERMES_PRESERVE_DEPLOY_ENV", "1")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "railway-key")
+
+    loaded = load_hermes_dotenv(hermes_home=home)
+
+    assert loaded == [env_file]
+    assert os.getenv("DEEPSEEK_API_KEY") == "railway-key"
+
+
 def test_project_env_overrides_stale_shell_values_when_user_env_missing(tmp_path, monkeypatch):
     home = tmp_path / "hermes"
     project_env = tmp_path / ".env"

@@ -6,47 +6,15 @@ export API_SERVER_HOST="${API_SERVER_HOST:-0.0.0.0}"
 export API_SERVER_PORT="${API_SERVER_PORT:-${PORT:-8642}}"
 export HERMES_HOME="${HERMES_HOME:-/opt/data}"
 export HOME="${HOME:-/opt/data}"
+export HERMES_PRESERVE_DEPLOY_ENV="${HERMES_PRESERVE_DEPLOY_ENV:-1}"
 
 mkdir -p "$HERMES_HOME"
 
 if [ -n "${HERMES_API_KEY:-}" ]; then
-  provider_for_key="$(python - <<'PY'
-from __future__ import annotations
-
-import os
-from pathlib import Path
-
-provider = os.environ.get("HERMES_PROVIDER", "").strip().lower()
-if not provider:
-    config_path = Path(os.environ.get("HERMES_HOME", "/opt/data")) / "config.yaml"
-    try:
-        import yaml
-
-        with config_path.open("r", encoding="utf-8") as f:
-            loaded = yaml.safe_load(f) or {}
-        if isinstance(loaded, dict):
-            model_cfg = loaded.get("model") or {}
-            if isinstance(model_cfg, dict):
-                provider = str(model_cfg.get("provider") or "").strip().lower()
-    except Exception:
-        provider = ""
-print(provider or "openrouter")
-PY
-)"
-  case "$provider_for_key" in
-    deepseek)
-      export DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-$HERMES_API_KEY}"
-      ;;
-    openrouter)
-      export OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-$HERMES_API_KEY}"
-      ;;
-    openai|custom)
-      export OPENAI_API_KEY="${OPENAI_API_KEY:-$HERMES_API_KEY}"
-      ;;
-    anthropic)
-      export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-$HERMES_API_KEY}"
-      ;;
-  esac
+  export DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-$HERMES_API_KEY}"
+  export OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-$HERMES_API_KEY}"
+  export OPENAI_API_KEY="${OPENAI_API_KEY:-$HERMES_API_KEY}"
+  export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-$HERMES_API_KEY}"
 fi
 
 if [ -n "${HERMES_PROVIDER:-}" ] || [ -n "${HERMES_MODEL:-}" ]; then
