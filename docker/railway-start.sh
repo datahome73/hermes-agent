@@ -17,8 +17,7 @@ if [ -n "${HERMES_API_KEY:-}" ]; then
   export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-$HERMES_API_KEY}"
 fi
 
-if [ -n "${HERMES_PROVIDER:-}" ] || [ -n "${HERMES_MODEL:-}" ]; then
-  python - <<'PY'
+python - <<'PY'
 from __future__ import annotations
 
 import os
@@ -27,12 +26,14 @@ from pathlib import Path
 
 home = Path(os.environ.get("HERMES_HOME", "/opt/data"))
 config_path = home / "config.yaml"
-provider = os.environ.get("HERMES_PROVIDER", "openrouter").strip() or "openrouter"
-model = os.environ.get("HERMES_MODEL", "deepseek/deepseek-chat").strip() or "deepseek/deepseek-chat"
+template_path = Path("/opt/hermes/cli-config.yaml.example")
+provider = os.environ.get("HERMES_PROVIDER", "").strip()
+model = os.environ.get("HERMES_MODEL", "").strip()
 
 home.mkdir(parents=True, exist_ok=True)
 
 data = {}
+config_needs_write = False
 try:
     import yaml
 
@@ -43,25 +44,33 @@ try:
             data = loaded
         else:
             raise TypeError("config root is not a mapping")
-    model_cfg = data.get("model")
-    if not isinstance(model_cfg, dict):
-        model_cfg = {}
-    model_cfg["provider"] = provider
-    model_cfg["default"] = model
-    data["model"] = model_cfg
-    with config_path.open("w", encoding="utf-8") as f:
-        yaml.safe_dump(data, f, sort_keys=False)
 except Exception:
     if config_path.exists():
         backup_path = config_path.with_suffix(".yaml.broken")
         shutil.copy2(config_path, backup_path)
-    config_path.write_text(
-        "model:\n"
-        f"  provider: {provider}\n"
-        f"  default: {model}\n",
-        encoding="utf-8",
-    )
+    if template_path.exists():
+        shutil.copy2(template_path, config_path)
+        with config_path.open("r", encoding="utf-8") as f:
+            loaded = yaml.safe_load(f) or {}
+        data = loaded if isinstance(loaded, dict) else {}
+    else:
+        data = {}
+    config_needs_write = True
+
+if provider or model:
+    model_cfg = data.get("model")
+    if not isinstance(model_cfg, dict):
+        model_cfg = {}
+    if provider:
+        model_cfg["provider"] = provider
+    if model:
+        model_cfg["default"] = model
+    data["model"] = model_cfg
+    config_needs_write = True
+
+if config_needs_write:
+    with config_path.open("w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f, sort_keys=False)
 PY
-fi
 
 exec hermes gateway run

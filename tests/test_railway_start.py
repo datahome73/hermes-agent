@@ -24,3 +24,10 @@ def test_railway_start_preserves_deploy_env_over_persisted_dotenv() -> None:
     script = (ROOT / "docker" / "railway-start.sh").read_text(encoding="utf-8")
 
     assert "HERMES_PRESERVE_DEPLOY_ENV" in script
+
+
+def test_railway_start_repairs_broken_config_from_template() -> None:
+    script = (ROOT / "docker" / "railway-start.sh").read_text(encoding="utf-8")
+
+    assert "cli-config.yaml.example" in script
+    assert ".yaml.broken" in script
