@@ -39,3 +39,11 @@ def test_railway_defaults_to_gateway_worker_mode() -> None:
 
     assert 'API_SERVER_ENABLED="${API_SERVER_ENABLED:-false}"' in script
     assert "healthcheckPath" not in railway
+
+
+def test_railway_deepseek_clears_stale_openrouter_base_url() -> None:
+    script = (ROOT / "docker" / "railway-start.sh").read_text(encoding="utf-8")
+
+    assert "unset OPENROUTER_BASE_URL" in script
+    assert 'model_cfg.pop("base_url", None)' in script
+    assert 'model_cfg.pop("api_mode", None)' in script

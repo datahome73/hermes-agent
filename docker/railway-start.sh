@@ -17,6 +17,13 @@ if [ -n "${HERMES_API_KEY:-}" ]; then
   export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-$HERMES_API_KEY}"
 fi
 
+case "${HERMES_PROVIDER:-}" in
+  deepseek)
+    unset OPENROUTER_BASE_URL
+    unset OPENAI_BASE_URL
+    ;;
+esac
+
 python - <<'PY'
 from __future__ import annotations
 
@@ -29,6 +36,7 @@ config_path = home / "config.yaml"
 template_path = Path("/opt/hermes/cli-config.yaml.example")
 provider = os.environ.get("HERMES_PROVIDER", "").strip()
 model = os.environ.get("HERMES_MODEL", "").strip()
+base_url = os.environ.get("HERMES_BASE_URL", "").strip()
 
 home.mkdir(parents=True, exist_ok=True)
 
@@ -63,8 +71,13 @@ if provider or model:
         model_cfg = {}
     if provider:
         model_cfg["provider"] = provider
+        if not base_url:
+            model_cfg.pop("base_url", None)
+            model_cfg.pop("api_mode", None)
     if model:
         model_cfg["default"] = model
+    if base_url:
+        model_cfg["base_url"] = base_url
     data["model"] = model_cfg
     config_needs_write = True
 
