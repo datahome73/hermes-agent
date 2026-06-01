@@ -31,3 +31,11 @@ def test_railway_start_repairs_broken_config_from_template() -> None:
 
     assert "cli-config.yaml.example" in script
     assert ".yaml.broken" in script
+
+
+def test_railway_defaults_to_gateway_worker_mode() -> None:
+    script = (ROOT / "docker" / "railway-start.sh").read_text(encoding="utf-8")
+    railway = (ROOT / "railway.toml").read_text(encoding="utf-8")
+
+    assert 'API_SERVER_ENABLED="${API_SERVER_ENABLED:-false}"' in script
+    assert "healthcheckPath" not in railway
