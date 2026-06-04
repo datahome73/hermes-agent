@@ -10,16 +10,16 @@ export HERMES_PRESERVE_DEPLOY_ENV="${HERMES_PRESERVE_DEPLOY_ENV:-1}"
 
 mkdir -p "$HERMES_HOME"
 
-# ── 初始化 config.yaml ──────────────────────────────────────────
-# 从环境变量写入主模型和备用模型配置
-# 支持的变量:
-#   HERMES_PROVIDER   — provider 名称 (如 deepseek)
-#   HERMES_MODEL      — 模型名称 (如 deepseek-chat)
-#   HERMES_BASE_URL   — 自定义 base URL (可选)
-#   HERMES_FALLBACK_PROVIDER  — 备用 provider (可选)
-#   HERMES_FALLBACK_MODEL     — 备用模型 (可选)
-#   HERMES_FALLBACK_BASE_URL  — 备用 base URL (可选)
-#   HERMES_API_KEY    — 统一 API key (可选, 自动设置到对应 provider 的环境变量)
+# ── 从环境变量自动生成 config.yaml ─────────────────────────────
+# 脚本扫描已知 provider 的环境变量前缀，自动推导主模型和备用模型。
+# 无需任何 HERMES_* 变量。只需在 Railway Dashboard 设置:
+#
+#   必选:  <PROVIDER>_API_KEY   (如 DEEPSEEK_API_KEY, GEMINI_API_KEY)
+#   可选:  <PROVIDER>_BASE_URL  (如 DEEPSEEK_BASE_URL)
+#   可选:  <PROVIDER>_MODEL     (如 DEEPSEEK_MODEL, 覆盖默认模型名)
+#
+# 主模型优先级: 设 PRIMARY_PROVIDER= 则用指定的，否则 deepseek > gemini > 其他
+# 备用模型: 从剩余可用 provider 中选第一个
 
 python3 - <<'PY'
 import os
@@ -28,10 +28,118 @@ from pathlib import Path
 
 home = Path(os.environ.get("HERMES_HOME", "/opt/data"))
 config_path = home / "config.yaml"
-
 home.mkdir(parents=True, exist_ok=True)
 
-# 读取现有 config
+# ── 已知 provider 配置表 ──
+PROVIDERS = {
+    "deepseek": {
+        "key_envs": ["DEEPSEEK_API_KEY"],
+        "base_url_envs": ["DEEPSEEK_BASE_URL"],
+        "default_base_url": "https://api.deepseek.com/v1",
+        "default_model": "deepseek-chat",
+        "model_env": "DEEPSEEK_MODEL",
+    },
+    "gemini": {
+        "key_envs": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+        "base_url_envs": ["GEMINI_BASE_URL", "GOOGLE_BASE_URL"],
+        "default_base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "default_model": "gemini-2.0-flash",
+        "model_env": "GEMINI_MODEL",
+    },
+    "openai": {
+        "key_envs": ["OPENAI_API_KEY"],
+        "base_url_envs": ["OPENAI_BASE_URL"],
+        "default_base_url": "https://api.openai.com/v1",
+        "default_model": "gpt-4o",
+        "model_env": "OPENAI_MODEL",
+    },
+    "openrouter": {
+        "key_envs": ["OPENROUTER_API_KEY"],
+        "base_url_envs": ["OPENROUTER_BASE_URL"],
+        "default_base_url": "https://openrouter.ai/api/v1",
+        "default_model": "deepseek-chat",
+        "model_env": "OPENROUTER_MODEL",
+    },
+    "anthropic": {
+        "key_envs": ["ANTHROPIC_API_KEY"],
+        "base_url_envs": ["ANTHROPIC_BASE_URL"],
+        "default_base_url": "https://api.anthropic.com/v1",
+        "default_model": "claude-sonnet-4-20250514",
+        "model_env": "ANTHROPIC_MODEL",
+    },
+    "custom": {
+        "key_envs": ["CUSTOM_API_KEY"],
+        "base_url_envs": ["CUSTOM_BASE_URL"],
+        "default_base_url": "",
+        "default_model": "custom-model",
+        "model_env": "CUSTOM_MODEL",
+    },
+}
+
+# provider 优先级 (用于主模型选择)
+PRIORITY = ["deepseek", "gemini", "openai", "openrouter", "anthropic", "custom"]
+
+# ── 扫描环境变量，找出可用 provider ──
+available = {}  # name -> {api_key, base_url, model}
+
+for name, cfg in PROVIDERS.items():
+    api_key = None
+    for env in cfg["key_envs"]:
+        v = os.environ.get(env, "").strip()
+        if v:
+            api_key = v
+            break
+    if not api_key:
+        continue  # 没有 API key，跳过
+
+    base_url = None
+    for env in cfg["base_url_envs"]:
+        v = os.environ.get(env, "").strip()
+        if v:
+            base_url = v
+            break
+    if not base_url:
+        base_url = cfg["default_base_url"]
+
+    model = os.environ.get(cfg["model_env"], "").strip()
+    if not model:
+        model = cfg["default_model"]
+
+    available[name] = {
+        "api_key": api_key,
+        "base_url": base_url,
+        "model": model,
+        "key_env": cfg["key_envs"][0],
+    }
+
+if not available:
+    print("⚠ No known provider API keys found. Starting with defaults.")
+else:
+    print(f"✅ Detected providers: {', '.join(available.keys())}")
+
+# ── 选主模型 ──
+primary_provider = os.environ.get("PRIMARY_PROVIDER", "").strip().lower()
+if primary_provider and primary_provider in available:
+    pass  # 已指定
+elif primary_provider:
+    print(f"⚠ PRIMARY_PROVIDER={primary_provider} not available, auto-selecting")
+    primary_provider = None
+
+if not primary_provider:
+    for p in PRIORITY:
+        if p in available:
+            primary_provider = p
+            break
+
+# ── 选备用模型 (从剩余 provider 中选优先级最高的) ──
+fallback_provider = None
+if primary_provider:
+    for p in PRIORITY:
+        if p in available and p != primary_provider:
+            fallback_provider = p
+            break
+
+# ── 读取现有 config ──
 data = {}
 if config_path.exists():
     try:
@@ -44,74 +152,29 @@ if config_path.exists():
 
 needs_write = False
 
-# ── 主模型配置 ──
-provider = os.environ.get("HERMES_PROVIDER", "").strip()
-model = os.environ.get("HERMES_MODEL", "").strip()
-base_url = os.environ.get("HERMES_BASE_URL", "").strip()
-
-if provider or model:
-    model_cfg = data.get("model")
-    if not isinstance(model_cfg, dict):
-        model_cfg = {}
-    if provider:
-        model_cfg["provider"] = provider
-    if model:
-        model_cfg["default"] = model
-    if base_url:
-        model_cfg["base_url"] = base_url
-    elif provider and not base_url:
-        # 清理旧 base_url 当只设 provider 时
-        model_cfg.pop("base_url", None)
-        model_cfg.pop("api_mode", None)
-    data["model"] = model_cfg
-    needs_write = True
-
-# ── 备用模型配置 ──
-fb_provider = os.environ.get("HERMES_FALLBACK_PROVIDER", "").strip()
-fb_model = os.environ.get("HERMES_FALLBACK_MODEL", "").strip()
-fb_base_url = os.environ.get("HERMES_FALLBACK_BASE_URL", "").strip()
-
-if fb_provider and fb_model:
-    entry = {
-        "provider": fb_provider,
-        "model": fb_model,
+# ── 写入主模型 ──
+if primary_provider:
+    p = available[primary_provider]
+    data["model"] = {
+        "provider": primary_provider,
+        "default": p["model"],
+        "base_url": p["base_url"],
     }
-    if fb_base_url:
-        entry["base_url"] = fb_base_url
-
-    # 读取现有 fallback chain, 替换或追加
-    existing = data.get("fallback_providers")
-    if isinstance(existing, list):
-        # 替换同 provider 的条目, 否则追加
-        replaced = False
-        for i, e in enumerate(existing):
-            if isinstance(e, dict) and e.get("provider") == fb_provider:
-                existing[i] = entry
-                replaced = True
-                break
-        if not replaced:
-            existing.append(entry)
-    else:
-        data["fallback_providers"] = [entry]
+    print(f"📌 Primary: {primary_provider}/{p['model']} → {p['base_url']}")
     needs_write = True
-elif fb_provider or fb_model:
-    # 只设了一个, 忽略
-    pass
 
-# ── API Key 自动映射 ──
-# 主 provider API key
-api_key = os.environ.get("HERMES_API_KEY", "").strip()
-if api_key:
-    p = provider.lower() if provider else ""
-    if p in ("deepseek",) or not p:
-        os.environ["DEEPSEEK_API_KEY"] = api_key
-
-# 备用 provider API key (从 HERMES_FALLBACK_PROVIDER 推断)
-fb_p = fb_provider.lower() if fb_provider else ""
-if fb_p == "gemini" and not os.environ.get("GEMINI_API_KEY"):
-    # 如果备用是 gemini 且没有单独设 GEMINI_API_KEY, 尝试用 HERMES_API_KEY
-    if api_key:
-        os.environ["GEMINI_API_KEY"] = api_key
+# ── 写入备用模型 ──
+if fallback_provider:
+    p = available[fallback_provider]
+    data["fallback_providers"] = [{
+        "provider": fallback_provider,
+        "model": p["model"],
+        "base_url": p["base_url"],
+    }]
+    print(f"📌 Fallback: {fallback_provider}/{p['model']} → {p['base_url']}")
+    needs_write = True
+else:
+    data.pop("fallback_providers", None)
 
 if needs_write:
     with open(config_path, "w", encoding="utf-8") as f:
