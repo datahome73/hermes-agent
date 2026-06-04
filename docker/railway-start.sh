@@ -98,15 +98,20 @@ elif fb_provider or fb_model:
     # 只设了一个, 忽略
     pass
 
-# ── HERMES_API_KEY 自动映射到对应 provider 环境变量 ──
+# ── API Key 自动映射 ──
+# 主 provider API key
 api_key = os.environ.get("HERMES_API_KEY", "").strip()
 if api_key:
-    # 根据主 provider 设置对应环境变量
     p = provider.lower() if provider else ""
     if p in ("deepseek",) or not p:
         os.environ["DEEPSEEK_API_KEY"] = api_key
-    if p in ("openrouter",) or not p:
-        os.environ["OPENROUTER_API_KEY"] = api_key
+
+# 备用 provider API key (从 HERMES_FALLBACK_PROVIDER 推断)
+fb_p = fb_provider.lower() if fb_provider else ""
+if fb_p == "gemini" and not os.environ.get("GEMINI_API_KEY"):
+    # 如果备用是 gemini 且没有单独设 GEMINI_API_KEY, 尝试用 HERMES_API_KEY
+    if api_key:
+        os.environ["GEMINI_API_KEY"] = api_key
 
 if needs_write:
     with open(config_path, "w", encoding="utf-8") as f:
