@@ -183,8 +183,8 @@ if config_path.exists():
 
 needs_write = False
 
-# ── 写入主模型 ──
-if primary_provider:
+# ── 写入主模型（仅首次部署时写入，保留手动配置）──
+if primary_provider and "model" not in data:
     p = available[primary_provider]
     data["model"] = {
         "provider": primary_provider,
@@ -194,8 +194,8 @@ if primary_provider:
     print(f"📌 Primary: {primary_provider}/{p['model']} → {_safe(p['base_url'])}")
     needs_write = True
 
-# ── 写入备用模型 ──
-if fallback_provider:
+# ── 写入备用模型（仅首次部署时写入，保留手动配置）──
+if fallback_provider and "fallback_providers" not in data:
     p = available[fallback_provider]
     data["fallback_providers"] = [{
         "provider": fallback_provider,
