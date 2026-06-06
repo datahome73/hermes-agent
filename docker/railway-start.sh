@@ -204,8 +204,9 @@ if fallback_provider and "fallback_providers" not in data:
     }]
     print(f"📌 Fallback: {fallback_provider}/{p['model']} → {_safe(p['base_url'])}")
     needs_write = True
-else:
-    data.pop("fallback_providers", None)
+elif not fallback_provider and "fallback_providers" not in data:
+    # 没有可用备用 provider 且 config 中也没有 → 无需写
+    pass
 
 if needs_write:
     with open(config_path, "w", encoding="utf-8") as f:
