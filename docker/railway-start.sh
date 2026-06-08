@@ -9,6 +9,7 @@ export HOME="${HOME:-/opt/data}"
 export HERMES_PRESERVE_DEPLOY_ENV="${HERMES_PRESERVE_DEPLOY_ENV:-1}"
 
 mkdir -p "$HERMES_HOME"
+chown -R hermes:hermes "$HERMES_HOME" 2>/dev/null || true
 
 # ── 从环境变量自动生成 config.yaml ─────────────────────────────
 # 脚本扫描已知 provider 的环境变量前缀，自动推导主模型和备用模型。
