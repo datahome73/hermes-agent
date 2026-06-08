@@ -1,0 +1,7 @@
+[build]
+builder = "DOCKERFILE"
+
+[deploy]
+startCommand = "mkdir -p /opt/data/logs && chown -R hermes:hermes /opt/data && exec /opt/hermes/docker/railway-start.sh"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
