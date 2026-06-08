@@ -11,6 +11,9 @@ export HERMES_PRESERVE_DEPLOY_ENV="${HERMES_PRESERVE_DEPLOY_ENV:-1}"
 mkdir -p "$HERMES_HOME"
 chown -R hermes:hermes "$HERMES_HOME" 2>/dev/null || true
 
+# ── 确保卷目录权限正确 (空卷上无副作用, 已有卷修复权限) ──
+chmod 0755 "$HERMES_HOME" 2>/dev/null || true
+
 # ── 从环境变量自动生成 config.yaml ─────────────────────────────
 # 脚本扫描已知 provider 的环境变量前缀，自动推导主模型和备用模型。
 # 无需任何 HERMES_* 变量。只需在 Railway Dashboard 设置:
