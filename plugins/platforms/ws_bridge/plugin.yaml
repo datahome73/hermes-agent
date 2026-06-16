@@ -1,5 +1,0 @@
-name: ws-bridge-client
-label: WS Bridge
-kind: platform
-version: 1.0.0
-description: Hermes Gateway plugin for self-hosted WS Bridge broadcast channel
