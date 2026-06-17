@@ -121,6 +121,7 @@ class WSBridgeAdapter(BasePlatformAdapter):
         self._mention_mode = bool(extra.get("mention_mode", False))
         self._mention_keyword = extra.get("mention_keyword", "小爱")
         self._auth_ok = False
+        self._active_channel: str = "lobby"  # R7: active workspace channel
 
         # WS state
         self._ws: Optional[Any] = None
@@ -205,9 +206,13 @@ class WSBridgeAdapter(BasePlatformAdapter):
 
             if resp.get("type") == "auth_ok":
                 self._auth_ok = True
+                # R7: read active channel from server
+                channel = resp.get("active_channel")
+                if channel:
+                    self._active_channel = channel
                 logger.warning(
-                    "[WSBridge] Auth OK — role=%s agent_id=%s",
-                    resp.get("role"), resp.get("agent_id", "")[:20],
+                    "[WSBridge] Auth OK — role=%s agent_id=%s channel=%s",
+                    resp.get("role"), resp.get("agent_id", "")[:20], self._active_channel,
                 )
                 # Start reader loop
                 asyncio.create_task(self._reader_loop())
@@ -255,11 +260,16 @@ class WSBridgeAdapter(BasePlatformAdapter):
             return SendResult(success=False, message_id="", error="Not connected")
 
         import json, time
+        # R7: use active channel for proper workspace routing
+        channel = self._active_channel or "lobby"
         payload = json.dumps({
             "type": "message",
+            "from_name": self._bot_name,
+            "agent_id": self._agent_id,
             "from": self._bot_name,
             "from_agent": self._agent_id,
             "content": content,
+            "channel": channel,  # R7: workspace channel routing
             "ts": time.time(),
         })
 
@@ -327,11 +337,18 @@ class WSBridgeAdapter(BasePlatformAdapter):
     async def _handle_ws_message(self, msg: dict) -> None:
         """Handle incoming WS message."""
         msg_type = msg.get("type")
+        # R7: track last broadcast channel for member context
+        broadcast_channel = None
 
         if msg_type == "broadcast":
             content = msg.get("content", "")
             from_name = msg.get("from", "")
             from_agent = msg.get("from_agent", "")
+
+            # R7: record broadcast channel for member context routing
+            broadcast_channel = msg.get("channel", "lobby")
+            if broadcast_channel and broadcast_channel != "lobby":
+                self._active_channel = broadcast_channel
 
             if not content or not from_name:
                 return
@@ -360,6 +377,10 @@ class WSBridgeAdapter(BasePlatformAdapter):
         elif msg_type == "auth_ok":
             logger.warning("[WSBridge] Re-auth OK — role=%s", msg.get("role"))
             self._auth_ok = True
+            # R7: update active channel on re-auth
+            channel = msg.get("active_channel")
+            if channel:
+                self._active_channel = channel
 
         elif msg_type == "pairing_code":
             code = msg.get("code", "?")
@@ -369,6 +390,17 @@ class WSBridgeAdapter(BasePlatformAdapter):
 
         elif msg_type == "error":
             logger.warning("[WSBridge] Server error: %s", msg.get("error", ""))
+
+        elif msg_type == "channel_updated":
+            # R7: server confirms active channel change
+            new_channel = msg.get("active_channel") or msg.get("channel", "lobby")
+            self._active_channel = new_channel
+            logger.warning("[WSBridge] Active channel updated to '%s'", new_channel)
+
+        elif msg_type == "workspace_closing":
+            # R7: workspace closing — reset active channel
+            self._active_channel = "lobby"
+            logger.warning("[WSBridge] Workspace closing, channel reset to lobby")
 
     async def _process_inbound_message(self, content: str, raw_msg: dict) -> None:
         """Build MessageEvent and dispatch to Gateway handler."""
