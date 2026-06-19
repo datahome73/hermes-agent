@@ -260,8 +260,8 @@ class WSBridgeAdapter(BasePlatformAdapter):
             return SendResult(success=False, message_id="", error="Not connected")
 
         import json, time
-        # R7: use active channel for proper workspace routing
-        channel = self._active_channel or "lobby"
+        # R17: priority: chat_id > _active_channel > "lobby"
+        channel = chat_id or self._active_channel or "lobby"
         payload = json.dumps({
             "type": "message",
             "from_name": self._bot_name,
@@ -269,7 +269,7 @@ class WSBridgeAdapter(BasePlatformAdapter):
             "from": self._bot_name,
             "from_agent": self._agent_id,
             "content": content,
-            "channel": channel,  # R7: workspace channel routing
+            "channel": channel,
             "ts": time.time(),
         })
 
@@ -347,8 +347,7 @@ class WSBridgeAdapter(BasePlatformAdapter):
 
             # R7: record broadcast channel for member context routing
             broadcast_channel = msg.get("channel", "lobby")
-            if broadcast_channel and broadcast_channel != "lobby":
-                self._active_channel = broadcast_channel
+            self._active_channel = broadcast_channel
 
             if not content or not from_name:
                 return
@@ -407,9 +406,11 @@ class WSBridgeAdapter(BasePlatformAdapter):
         from datetime import datetime
         from gateway.platforms.base import MessageEvent, MessageType
 
+        # R17: use actual channel from broadcast, fallback to lobby
+        channel = raw_msg.get("channel", "lobby") or "lobby"
         source = self.build_source(
-            chat_id="ws_bridge_group",
-            chat_name="WS Bridge",
+            chat_id=channel,
+            chat_name=channel,
             chat_type="group",
             user_id="ws_bridge_user",
             user_name="WS Bridge",
