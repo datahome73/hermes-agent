@@ -223,7 +223,7 @@ class _WSConnection:
         self._should_reconnect = True
         backoff = self._reconnect_delay
 
-        while self._should_reconnect:
+        while self._should_reconnect and not self._stop_event.is_set():
             try:
                 self._ws = await websockets.connect(
                     self.url,
@@ -393,8 +393,9 @@ class _WSConnection:
             await self._handle_message(msg)
 
     async def _reconnect_with_backoff(self) -> None:
+        self._connected = False
         delay = self._reconnect_delay
-        self._reconnect_delay = min(delay * 1.5, 30.0)
+        self._reconnect_delay = min(delay * 1.5, 300.0)
         await asyncio.sleep(delay)
         logger.warning(
             "[WSBridge: %s] Reconnecting in %.0fs...", self.name, delay,
